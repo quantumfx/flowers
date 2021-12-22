@@ -1,3 +1,5 @@
+# flowers_torch.py - Fang Xi Lin 2021
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -7,6 +9,9 @@ import torchvision
 import torchvision.transforms as transforms
 
 from torch.utils.data.dataset import Dataset
+
+import argparse
+import numpy as np
 
 
 class CNN(nn.Module):
@@ -94,38 +99,70 @@ class FlowersDataset(Dataset):
     def __len__(self):
         return self.N
 
-cnn = CNN(32,256,0.35,17)
+def main(image_path = '50x50flowers.images.npy', label_path = '50x50flowers.targets.npy',  show_images=False, show_history=False, epochs=300):
 
-transform = transforms.Compose(
-    [transforms.ToTensor(),
-     transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5))]
-)
+    transform = transforms.Compose(
+        [transforms.ToTensor(),
+         transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5))]
+    )
 
-x_train = FlowersDataset(drive+'50x50flowers.images.npy',drive+'50x50flowers.targets.npy', train=True, transform=transform)
-train_dataloader = torch.utils.data.DataLoader(x_train, batch_size = 32, shuffle=True, num_workers=2)
+    x_train = FlowersDataset(image_path, label_path, train=True, transform=transform)
+    train_dataloader = torch.utils.data.DataLoader(x_train, batch_size = 32, shuffle=True, num_workers=2)
 
-x_test = FlowersDataset(drive+'50x50flowers.images.npy',drive+'50x50flowers.targets.npy', train=False, transform=transform)
-test_dataloader = torch.utils.data.DataLoader(x_test, batch_size = 32, shuffle=True, num_workers=2)
+    x_test = FlowersDataset(image_path, label_path, train=False, transform=transform)
+    test_dataloader = torch.utils.data.DataLoader(x_test, batch_size = 32, shuffle=True, num_workers=2)
 
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(cnn.parameters(), lr=0.001, betas=(0.9,0.999), eps=1e-7)
+    cnn = CNN(num_features = 32, hidden_size = 128, drate=0.35, output_size = 17)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(cnn.parameters(), lr=0.001, betas=(0.9,0.999), eps=1e-7)
+
+    cnn.train()
+
+    for epoch in range(epochs):
+        running_loss = 0.0
+
+        for i, data in enumerate(train_dataloader, start=0):
+            inputs, labels = data
+
+            optimizer.zero_grad()
+
+            outputs = cnn(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
+            running_loss += loss.item()
+            if i % 5 == 4:
+                print('epoch %d, batch %5d, loss: %.3f' %
+                    (epoch + 1, i + 1, running_loss / 5))
+                running_loss = 0.0
 
 
-for epoch in range(10):
-    running_loss = 0.0
+    correct = 0
+    total = 0
 
-    for i, data in enumerate(train_dataloader, start=0):
-        inputs, labels = data
+    cnn.eval()
 
-        optimizer.zero_grad()
+    with torch.no_grad():
+        for data in test_dataloader:
+            images, labels = data
 
-        outputs = cnn(inputs)
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
+            outputs = cnn(images)
 
-        running_loss += loss.item()
-        if i % 20 == 19:
-            print('[%d, %5d] loss: %.3f' %
-                  (epoch + 1, i + 1, running_loss / 20))
-            running_loss = 0.0
+            prob, labels_predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (labels_predicted == labels).sum().item()
+
+    print('accuracy is: %d %%' % (100*correct/total))
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description='Neural network for downsized flowers dataset.')
+    parser.add_argument('--image-path', help='Relative path to images file')
+    parser.add_argument('--label-path', help='Relative path to labels file')
+    parser.add_argument('--show-images', action="store_true", help='Display sample and augmented data')
+    parser.add_argument('--show-history', action="store_true", help='Display loss and accuracy history after training')
+    parser.add_argument('-e', '--epochs', type=int, help='Number to epochs to train')
+    args = parser.parse_args()
+
+    main(image_path=args.image_path, label_path=args.label_path,show_images=args.show_images, show_history=args.show_history, epochs=args.epochs)
