@@ -48,45 +48,47 @@ class CNN(nn.Module):
         self.output_size = output_size
 
         # First conv layer with max pooling
-        self.conv1    = nn.Conv2d(3, self.num_features, kernel_size=(3, 3))
-        self.maxpool1 = nn.MaxPool2d(kernel_size = (2, 2), stride = (2, 2))
+        self.conv_block1 = nn.Sequential(
+            nn.Conv2d(3, self.num_features, kernel_size=(3, 3)),
+            nn.MaxPool2d(kernel_size = (2, 2), stride = (2, 2)),
+            nn.ReLU()
+        )
 
         # Second conv layer
-        self.conv2    = nn.Conv2d(self.num_features, 2*self.num_features, kernel_size = (3, 3))
-        self.maxpool2 = nn.MaxPool2d(kernel_size = (2, 2), stride = (2, 2))
+        self.conv_block2 = nn.Sequential(
+            nn.Conv2d(self.num_features, 2*self.num_features, kernel_size=(3, 3)),
+            nn.MaxPool2d(kernel_size = (2, 2), stride = (2, 2)),
+            nn.ReLU()
+        )
 
         # Third conv layer
-        self.conv3    = nn.Conv2d(2*self.num_features, 3*self.num_features, kernel_size = (3, 3))
-        self.maxpool3 = nn.MaxPool2d(kernel_size = (2, 2), stride = (2, 2))
+        self.conv_block3 = nn.Sequential(
+            nn.Conv2d(2*self.num_features, 3*self.num_features, kernel_size=(3, 3)),
+            nn.MaxPool2d(kernel_size = (2, 2), stride = (2, 2)),
+            nn.ReLU()
+        )
 
         # Flattening layer
         # self.flatten  = nn.Flatten()
 
         # Dense layer with dropout
-        self.fc1 = nn.Linear(4*4*3*self.num_features, self.hidden_size)
-        self.dropout = nn.Dropout(self.drate)
+        self.fc_block = nn.Sequential(
+            nn.Linear(4*4*3*self.num_features, self.hidden_size),
+            nn.Dropout(self.drate),
+            nn.ReLU()
+        )
 
         # Final classification layer
         self.fc2 = nn.Linear(self.hidden_size, self.output_size)
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = F.relu(x)
-        x = self.maxpool1(x)
-
-        x = self.conv2(x)
-        x = F.relu(x)
-        x = self.maxpool2(x)
-
-        x = self.conv3(x)
-        x = F.relu(x)
-        x = self.maxpool3(x)
+        x = self.conv_block1(x)
+        x = self.conv_block2(x)
+        x = self.conv_block3(x)
 
         x = x.view(x.size(0), -1) # flatten
 
-        x = self.fc1(x)
-        x = F.relu(x)
-        x = self.dropout(x)
+        x = self.fc_block(x)
 
         x = self.fc2(x)
 
