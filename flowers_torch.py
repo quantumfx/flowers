@@ -12,11 +12,32 @@ from torch.utils.data.dataset import Dataset
 
 import argparse
 import numpy as np
+import matplotlib.pyplot as plt
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class CNN(nn.Module):
+    """
+    This class returns a convolution neural network PyTorch model,
+    with num_features feature maps in the first convolutional layer, 2 *
+    num_features in the second convolutional layer, 3 * num_features in the third
+    convolutional layer, a dropout layer with rate drate and hidden_size
+    neurons in the fully-connected layer.
+
+    Inputs:
+        num_features: int, the number of feature maps in the convolution layer.
+
+        hidden_size: int, the number of nodes in the fully-connected layer.
+
+        drate: float, dropout rate in the fully-connected layer.
+
+        output_size: int, the number of nodes in the output layer,
+            default = 17.
+
+    Output: the constructed Keras model.
+
+    """
     def __init__(self, num_features, hidden_size, drate, output_size = 17):
         super(CNN, self).__init__()
 
@@ -90,6 +111,16 @@ class CNN(nn.Module):
         return accuracy
 
 class FlowersDataset(Dataset):
+    """
+    This class loads image and label files, then split them into a training
+    (80 %) and test (20%) set.
+
+    Inputs:
+        img_path: str, relative path to image file.
+        label_path: str, relative path to targets file.
+        train: bool, which set of data to load.
+	transform: pytorch transform, transforms to perform
+    """
     def __init__(self, img_path, label_path, train=True, transform=None):
         #
         self.transform = transform
@@ -118,7 +149,41 @@ class FlowersDataset(Dataset):
     def __len__(self):
         return self.N
 
+    def show_images(self, title=''):
+        """
+        This functon plots the first 32 images with given labels of the dataset.
+
+        Inputs:
+            images: uint8 Numpy array, image data with shape
+                (num_samples, 50, 50, 3).
+            labels: uint8 Numpy array, one-hot encoded labels with shape
+                (num_samples, 17).
+            title: str, title of the plot.
+
+        Returns:
+            Nothing returned.
+        """
+
+        plt.figure(figsize=(12,12))
+        plt.suptitle(title, fontsize=30)
+        for i in range(32):
+            image, label = self[i]
+            image = image / 2 + 0.5 #unnormalize
+            npimg = np.transpose(image.numpy(), (1,2,0))
+            plt.subplot(4,8,i+1)
+            plt.imshow(npimg)
+            plt.title('{}'.format(label))
+            plt.xticks([])
+            plt.yticks([])
+        plt.show()
+
+        return
+
 def get_transforms():
+    """
+    Returns the training pytorch transformations and testing pytorch transformations.
+    """
+# Rotating and flipping flowers still look like flowers. Shift and zoom ranges is good for the small image size. Shear is a good approximation of perspective. 'reflect' fill avoids overfitting on the edge effects of other fill modes, and brightness range is reasonable for the natural lighting in the dataset.
     train_transform = transforms.Compose(
         [transforms.ToTensor(),
          transforms.RandomHorizontalFlip(),
@@ -140,23 +205,33 @@ def get_transforms():
 
 def main(image_path = '50x50flowers.images.npy', label_path = '50x50flowers.targets.npy',  show_images=False, show_history=False, epochs=300, verbose=False):
 
+    # get data info
     train_transform, test_transform = get_transforms()
     batch_size = 32
 
+    # load data
     x_train = FlowersDataset(image_path, label_path, train=True, transform=train_transform)
     train_dataloader = torch.utils.data.DataLoader(x_train, batch_size = batch_size, shuffle=True, num_workers=2)
 
     x_test = FlowersDataset(image_path, label_path, train=False, transform=test_transform)
     test_dataloader = torch.utils.data.DataLoader(x_test, batch_size = batch_size, shuffle=True, num_workers=2)
+
+    if show_images:
+        x_train.show_images(title='Augmented data')
+
+    #total number of batches
     num_batches = len(x_train)//batch_size
 
+    #initialize CNN, loss function and optimizer
     cnn = CNN(num_features = 32, hidden_size = 128, drate=0.35, output_size = 17).to(device)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(cnn.parameters(), lr=0.001, betas=(0.9,0.999), eps=1e-8)
 
+    # training mode
     cnn.train()
 
+    #training loop
     for epoch in range(epochs):
         running_loss = 0.0
 
@@ -164,11 +239,16 @@ def main(image_path = '50x50flowers.images.npy', label_path = '50x50flowers.targ
             inputs, labels = data
             inputs, labels = inputs.to(device), labels.to(device)
 
+            # zero out gradient buffer
             optimizer.zero_grad()
 
+            # evaluate network (forward pass)
             outputs = cnn(inputs)
+            # compute loss
             loss = criterion(outputs, labels)
+            # backpropagate gradients
             loss.backward()
+            # update weights and biases
             optimizer.step()
 
             running_loss += loss.item()
@@ -176,6 +256,7 @@ def main(image_path = '50x50flowers.images.npy', label_path = '50x50flowers.targ
                 print('Epoch {}/{}, Batch {}/{}, Loss: {}'.format(epoch+1, epochs, i+1, num_batches, loss.item()))
         print('Epoch {}/{}, Epoch Average Loss: {}'.format(epoch+1, epochs, running_loss/num_batches))
 
+    # evaluation mode
     cnn.eval()
     train_score = cnn.evaluate(train_dataloader)
     test_score = cnn.evaluate(test_dataloader)
