@@ -47,14 +47,12 @@ class CNN(nn.Module):
         self.drate = drate
         self.output_size = output_size
 
-        # First conv layer with max pooling
-        self.conv_block1 = self.__conv_block(3, self.num_features)
-
-        # Second conv layer
-        self.conv_block1 = self.__conv_block(self.num_features, 2*self.num_features)
-
-        # Third conv layer
-        self.conv_block1 = self.__conv_block(2*self.num_features, 3*self.num_features)
+        # Conv layers with max pooling
+        self.conv_blocks = nn.Sequential(
+            self.__conv_block(3, self.num_features)
+            self.__conv_block(self.num_features, 2*self.num_features)
+            self.__conv_block(2*self.num_features, 3*self.num_features)
+        )
 
         # Flattening layer
         # self.flatten  = nn.Flatten()
@@ -77,9 +75,7 @@ class CNN(nn.Module):
         )
 
     def forward(self, x):
-        x = self.conv_block1(x)
-        x = self.conv_block2(x)
-        x = self.conv_block3(x)
+        x = self.conv_blocks(x)
 
         x = x.view(x.size(0), -1) # flatten
 
