@@ -48,25 +48,13 @@ class CNN(nn.Module):
         self.output_size = output_size
 
         # First conv layer with max pooling
-        self.conv_block1 = nn.Sequential(
-            nn.Conv2d(3, self.num_features, kernel_size=(3, 3)),
-            nn.MaxPool2d(kernel_size = (2, 2), stride = (2, 2)),
-            nn.ReLU()
-        )
+        self.conv_block1 = self.__conv_block(3, self.num_features)
 
         # Second conv layer
-        self.conv_block2 = nn.Sequential(
-            nn.Conv2d(self.num_features, 2*self.num_features, kernel_size=(3, 3)),
-            nn.MaxPool2d(kernel_size = (2, 2), stride = (2, 2)),
-            nn.ReLU()
-        )
+        self.conv_block1 = self.__conv_block(self.num_features, 2*self.num_features)
 
         # Third conv layer
-        self.conv_block3 = nn.Sequential(
-            nn.Conv2d(2*self.num_features, 3*self.num_features, kernel_size=(3, 3)),
-            nn.MaxPool2d(kernel_size = (2, 2), stride = (2, 2)),
-            nn.ReLU()
-        )
+        self.conv_block1 = self.__conv_block(2*self.num_features, 3*self.num_features)
 
         # Flattening layer
         # self.flatten  = nn.Flatten()
@@ -80,6 +68,13 @@ class CNN(nn.Module):
 
         # Final classification layer
         self.fc2 = nn.Linear(self.hidden_size, self.output_size)
+
+    def __conv_block(in_f, out_f, *args, **kwargs):
+        return nn.Sequential(
+            nn.Conv2d(in_f, out_f, kernel_size=(3, 3)),
+            nn.MaxPool2d(kernel_size = (2, 2), stride = (2, 2)),
+            nn.ReLU()
+        )
 
     def forward(self, x):
         x = self.conv_block1(x)
