@@ -47,19 +47,17 @@ class CNN(nn.Module):
         self.drate = drate
         self.output_size = output_size
 
+        self.feat_arr = [3, self.num_features, 2*self.num_features, 3*self.num_features]
         # Conv layers with max pooling
-        self.conv_blocks = nn.Sequential(
-            self.__conv_block(3, self.num_features)
-            self.__conv_block(self.num_features, 2*self.num_features)
-            self.__conv_block(2*self.num_features, 3*self.num_features)
-        )
+        conv_blocks = [self.__conv_block(in_f, out_f, kernel_size=2) for in_f, out_f in zip(self.feat_arr, self.feat_arr[1:])]
+        self.conv_blocks = nn.Sequential(*conv_blocks)
 
         # Flattening layer
         # self.flatten  = nn.Flatten()
 
         # Dense layer with dropout
         self.fc_block = nn.Sequential(
-            nn.Linear(4*4*3*self.num_features, self.hidden_size),
+            nn.Linear(5*5*self.feat_arr[-1], self.hidden_size),
             nn.Dropout(self.drate),
             nn.ReLU()
         )
@@ -67,10 +65,10 @@ class CNN(nn.Module):
         # Final classification layer
         self.fc2 = nn.Linear(self.hidden_size, self.output_size)
 
-    def __conv_block(in_f, out_f, *args, **kwargs):
+    def __conv_block(self,in_f, out_f, *args, **kwargs):
         return nn.Sequential(
-            nn.Conv2d(in_f, out_f, kernel_size=(3, 3)),
-            nn.MaxPool2d(kernel_size = (2, 2), stride = (2, 2)),
+            nn.Conv2d(in_f, out_f, *args, **kwargs),
+            nn.MaxPool2d((2, 2), stride = (2, 2)),
             nn.ReLU()
         )
 
