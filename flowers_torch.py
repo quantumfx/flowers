@@ -13,6 +13,8 @@ from torch.utils.data.dataset import Dataset
 import argparse
 import numpy as np
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
 class CNN(nn.Module):
     def __init__(self, num_features, hidden_size, drate, output_size = 17):
@@ -48,16 +50,16 @@ class CNN(nn.Module):
 
     def forward(self, x):
         x = self.conv1(x)
-        x = self.maxpool1(x)
         x = F.relu(x)
+        x = self.maxpool1(x)
 
         x = self.conv2(x)
-        x = self.maxpool2(x)
         x = F.relu(x)
+        x = self.maxpool2(x)
 
         x = self.conv3(x)
-        x = self.maxpool3(x)
         x = F.relu(x)
+        x = self.maxpool3(x)
 
         x = x.view(x.size(0), -1) # flatten
 
@@ -66,9 +68,26 @@ class CNN(nn.Module):
         x = self.dropout(x)
 
         x = self.fc2(x)
-        x = F.softmax(x, -1)
 
         return x
+
+    def evaluate(self, dataloader):
+        correct = 0
+        total = 0
+
+        with torch.no_grad():
+            for data in dataloader:
+                x, y = data
+                x, y = x.to(device), y.to(device)
+
+                outputs = self(x)
+
+                prob, y_predicted = torch.max(outputs.data, 1)
+                total += y.size(0)
+                correct += (y_predicted == y).sum().item()
+        accuracy = correct/total
+
+        return accuracy
 
 class FlowersDataset(Dataset):
     def __init__(self, img_path, label_path, train=True, transform=None):
@@ -99,22 +118,42 @@ class FlowersDataset(Dataset):
     def __len__(self):
         return self.N
 
-def main(image_path = '50x50flowers.images.npy', label_path = '50x50flowers.targets.npy',  show_images=False, show_history=False, epochs=300):
-
-    transform = transforms.Compose(
+def get_transforms():
+    train_transform = transforms.Compose(
         [transforms.ToTensor(),
-         transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5))]
+         transforms.RandomHorizontalFlip(),
+         transforms.RandomVerticalFlip(),
+         transforms.ColorJitter(brightness=.2,contrast=0.,saturation=0.),
+         transforms.RandomAffine(degrees=180, translate=(0.1,0.1), scale=(1.0,1.05), shear=20),
+         transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5)),
+         ]
     )
 
-    x_train = FlowersDataset(image_path, label_path, train=True, transform=transform)
-    train_dataloader = torch.utils.data.DataLoader(x_train, batch_size = 32, shuffle=True, num_workers=2)
+    test_transform = transforms.Compose(
+        [transforms.ToTensor(),
+         transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5)),
+         ]
+    )
 
-    x_test = FlowersDataset(image_path, label_path, train=False, transform=transform)
-    test_dataloader = torch.utils.data.DataLoader(x_test, batch_size = 32, shuffle=True, num_workers=2)
+    return train_transform, test_transform
 
-    cnn = CNN(num_features = 32, hidden_size = 128, drate=0.35, output_size = 17)
+
+def main(image_path = '50x50flowers.images.npy', label_path = '50x50flowers.targets.npy',  show_images=False, show_history=False, epochs=300, verbose=False):
+
+    train_transform, test_transform = get_transforms()
+    batch_size = 32
+
+    x_train = FlowersDataset(image_path, label_path, train=True, transform=train_transform)
+    train_dataloader = torch.utils.data.DataLoader(x_train, batch_size = batch_size, shuffle=True, num_workers=2)
+
+    x_test = FlowersDataset(image_path, label_path, train=False, transform=test_transform)
+    test_dataloader = torch.utils.data.DataLoader(x_test, batch_size = batch_size, shuffle=True, num_workers=2)
+    num_batches = len(x_train)//batch_size
+
+    cnn = CNN(num_features = 32, hidden_size = 128, drate=0.35, output_size = 17).to(device)
+
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(cnn.parameters(), lr=0.001, betas=(0.9,0.999), eps=1e-7)
+    optimizer = optim.Adam(cnn.parameters(), lr=0.001, betas=(0.9,0.999), eps=1e-8)
 
     cnn.train()
 
@@ -123,6 +162,7 @@ def main(image_path = '50x50flowers.images.npy', label_path = '50x50flowers.targ
 
         for i, data in enumerate(train_dataloader, start=0):
             inputs, labels = data
+            inputs, labels = inputs.to(device), labels.to(device)
 
             optimizer.zero_grad()
 
@@ -132,28 +172,17 @@ def main(image_path = '50x50flowers.images.npy', label_path = '50x50flowers.targ
             optimizer.step()
 
             running_loss += loss.item()
-            if i % 5 == 4:
-                print('epoch %d, batch %5d, loss: %.3f' %
-                    (epoch + 1, i + 1, running_loss / 5))
-                running_loss = 0.0
-
-
-    correct = 0
-    total = 0
+            if verbose:
+                print('Epoch {}/{}, Batch {}/{}, Loss: {}'.format(epoch+1, epochs, i+1, num_batches, loss.item()))
+        print('Epoch {}/{}, Epoch Average Loss: {}'.format(epoch+1, epochs, running_loss/num_batches))
 
     cnn.eval()
+    train_score = cnn.evaluate(train_dataloader)
+    test_score = cnn.evaluate(test_dataloader)
 
-    with torch.no_grad():
-        for data in test_dataloader:
-            images, labels = data
-
-            outputs = cnn(images)
-
-            prob, labels_predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (labels_predicted == labels).sum().item()
-
-    print('accuracy is: %d %%' % (100*correct/total))
+    print('Training score is {}'.format(train_score))
+    print('Test score is {}'.format(test_score))
+    print('Accuracy difference is {} %'.format(100 * (train_score - test_score) ) )
 
 if __name__ == "__main__":
 
@@ -163,6 +192,7 @@ if __name__ == "__main__":
     parser.add_argument('--show-images', action="store_true", help='Display sample and augmented data')
     parser.add_argument('--show-history', action="store_true", help='Display loss and accuracy history after training')
     parser.add_argument('-e', '--epochs', type=int, help='Number to epochs to train')
+    parser.add_argument('-v', '--verbose', action="store_true", help='Verbosity')
     args = parser.parse_args()
 
-    main(image_path=args.image_path, label_path=args.label_path,show_images=args.show_images, show_history=args.show_history, epochs=args.epochs)
+    main(image_path=args.image_path, label_path=args.label_path,show_images=args.show_images, show_history=args.show_history, epochs=args.epochs, verbose=args.verbose)
